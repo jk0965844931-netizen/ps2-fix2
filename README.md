@@ -86,6 +86,37 @@ The graphics fix database adds targeted renderer/accuracy plans for these issue 
 | Dark Cloud 2 / Odin Sphere have spinning models or broken geometry | #41 | `vu-geometry-spinning-models` | Treat the visual symptom as VU transform accuracy: disable unsafe VU speedhacks and use VU interpreters. |
 | Crash Twinsanity has animation glitches and iPad aspect scaling problems | #39 | `crash-twinsanity-animation-and-ipad-scaling` | Recompute iPad viewport/scissor state and add a VU fallback for animation glitches. |
 
+
+## GitHub Action: Build IPA
+
+This repository includes a manual GitHub Actions workflow at `.github/workflows/build-ipa.yml` for packaging an iOS IPA when an Xcode project or workspace is present.
+
+How to run it:
+
+1. Open **Actions** in GitHub.
+2. Select **Build IPA**.
+3. Click **Run workflow**.
+4. Provide the Xcode `scheme`; optionally provide `project_path` if auto-detection should not pick the first `.xcworkspace` or `.xcodeproj`.
+5. Choose `signing_mode`:
+   - `unsigned` creates a `Payload/*.app` zip IPA for CI smoke tests and local sideload experiments. It is not App Store/TestFlight ready.
+   - `automatic` uses Xcode automatic signing and an Apple Developer `team_id`.
+   - `manual` imports signing assets from repository secrets.
+
+Manual signing requires these GitHub secrets:
+
+- `BUILD_CERTIFICATE_BASE64` - base64-encoded `.p12` signing certificate.
+- `P12_PASSWORD` - password for the `.p12` certificate.
+- `PROVISION_PROFILE_BASE64` - base64-encoded `.mobileprovision` file.
+- `KEYCHAIN_PASSWORD` - optional temporary CI keychain password.
+
+The workflow validates compatibility data first, then runs `tools/build_ipa.sh` on `macos-14` and uploads the generated `.ipa` as an artifact.
+
+Local build example:
+
+```bash
+tools/build_ipa.sh --project-path iPSX2.xcodeproj --scheme iPSX2 --signing-mode unsigned --output-dir build/ipa
+```
+
 ## Applying these fixes in an emulator build
 
 Until source code is available, apply the `settings`, `renderer_actions`, and `user_steps` in the matching profile manually.  When the emulator source is imported, the `implementation_notes` and `implementation_patch_plan` fields identify the native changes to prioritize, such as recalculating Metal viewports and touch hitboxes on orientation changes, adding per-game JIT/VU fallbacks, tightening CDVD/SPU2 timing for stream-heavy games, and adding accurate Metal render-target resolves for framebuffer-feedback effects.

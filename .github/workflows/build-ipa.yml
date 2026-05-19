@@ -1,0 +1,129 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_path:
+        description: "Optional .xcodeproj or .xcworkspace path. Leave empty to auto-detect."
+        required: false
+        default: ""
+      scheme:
+        description: "Xcode scheme to build. Leave empty to auto-detect when only one shared scheme exists."
+        required: false
+        default: ""
+      configuration:
+        description: "Xcode build configuration."
+        required: false
+        default: "Release"
+      signing_mode:
+        description: "IPA signing mode: unsigned, automatic, or manual."
+        required: true
+        type: choice
+        options:
+          - unsigned
+          - automatic
+          - manual
+        default: unsigned
+      export_method:
+        description: "Export method for signed builds."
+        required: true
+        type: choice
+        options:
+          - development
+          - ad-hoc
+          - app-store
+          - enterprise
+        default: development
+      team_id:
+        description: "Apple Developer Team ID for signed builds."
+        required: false
+        default: ""
+      artifact_name:
+        description: "Uploaded artifact name."
+        required: false
+        default: "iPSX2-IPA"
+
+jobs:
+  validate-compatibility-data:
+    name: Validate compatibility data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate preset databases
+        run: python3 tools/compatibility.py validate
+
+      - name: Run unit tests
+        run: python3 -m pytest -q
+
+  build-ipa:
+    name: Build IPA
+    runs-on: macos-14
+    needs: validate-compatibility-data
+    permissions:
+      contents: read
+    env:
+      PROJECT_PATH: ${{ inputs.project_path }}
+      SCHEME: ${{ inputs.scheme }}
+      CONFIGURATION: ${{ inputs.configuration }}
+      SIGNING_MODE: ${{ inputs.signing_mode }}
+      EXPORT_METHOD: ${{ inputs.export_method }}
+      TEAM_ID: ${{ inputs.team_id }}
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      PROVISION_PROFILE_BASE64: ${{ secrets.PROVISION_PROFILE_BASE64 }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Import Apple signing assets
+        if: inputs.signing_mode == 'manual'
+        run: |
+          if [[ -z "${BUILD_CERTIFICATE_BASE64}" || -z "${P12_PASSWORD}" || -z "${PROVISION_PROFILE_BASE64}" ]]; then
+            echo "Manual signing requires BUILD_CERTIFICATE_BASE64, P12_PASSWORD, and PROVISION_PROFILE_BASE64 secrets." >&2
+            exit 1
+          fi
+
+          KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-temporary-ci-keychain-password}"
+          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          printf '%s' "$PROVISION_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")")
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+
+      - name: Build IPA
+        run: |
+          tools/build_ipa.sh \
+            --project-path "$PROJECT_PATH" \
+            --scheme "$SCHEME" \
+            --configuration "$CONFIGURATION" \
+            --signing-mode "$SIGNING_MODE" \
+            --export-method "$EXPORT_METHOD" \
+            --team-id "$TEAM_ID" \
+            --output-dir build/ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: build/ipa/*.ipa
+          if-no-files-found: error
