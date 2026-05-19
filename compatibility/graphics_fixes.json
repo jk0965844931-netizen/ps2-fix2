@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "source": "https://github.com/otti83/iPSX2/issues",
+  "updated": "2026-05-19",
+  "fixes": [
+    {
+      "id": "gow-hit-flash-framebuffer-feedback",
+      "title": "God of War hit flash flicker / framebuffer feedback",
+      "issue_refs": [42],
+      "games": ["God of War"],
+      "symptoms": [
+        "Screen flickers for several seconds when Kratos hits an enemy",
+        "Screen flickers when Kratos gets hit",
+        "The game otherwise runs smoothly on iPhone-class hardware"
+      ],
+      "classification": "framebuffer-feedback-alpha-blending",
+      "priority": "high",
+      "renderer_actions": {
+        "safe_profile": {
+          "backend": "Metal",
+          "internal_resolution": "Native 1x",
+          "accurate_blending": "High",
+          "accurate_destination_alpha": true,
+          "texture_barrier_or_framebuffer_fetch": true,
+          "readbacks": "Synchronous for feedback effects",
+          "mipmapping": "Automatic",
+          "crc_hack_level": "None"
+        },
+        "fallback_profile": {
+          "backend": "Software or most accurate renderer path if exposed",
+          "internal_resolution": "Native 1x",
+          "skipdraw": 0,
+          "disable_half_pixel_offset_hacks": true
+        }
+      },
+      "implementation_patch_plan": [
+        "Detect the God of War title/serial and force an accurate framebuffer-feedback path while hit-flash post-processing is active.",
+        "Do not reuse a Metal texture as both the current render target and sampled texture without a barrier/fetch-safe resolve.",
+        "Preserve destination alpha during post-process passes instead of clearing or approximating it.",
+        "Invalidate cached render-target resolves after GS alpha-blend state changes that read from the previous frame buffer."
+      ],
+      "user_steps": [
+        "Set renderer to Metal and internal resolution to Native 1x before testing the same fight again.",
+        "Enable high/accurate blending and accurate destination alpha if the settings UI exposes them.",
+        "If flicker remains, use the software/accurate fallback renderer for God of War until the Metal feedback path is patched."
+      ]
+    },
+    {
+      "id": "silent-hill-2-black-screen-depth-fog",
+      "title": "Silent Hill 2 gameplay black screen after first cutscene",
+      "issue_refs": [50],
+      "games": ["Silent Hill 2"],
+      "symptoms": [
+        "First cutscene renders",
+        "Gameplay becomes a black screen after the cutscene",
+        "Audio or game state may continue while graphics are missing"
+      ],
+      "classification": "depth-fog-framebuffer-readback",
+      "priority": "high",
+      "renderer_actions": {
+        "safe_profile": {
+          "backend": "Metal",
+          "internal_resolution": "Native 1x",
+          "accurate_blending": "High",
+          "accurate_depth": true,
+          "texture_preloading": "Full hash cache disabled for diagnosis",
+          "crc_hack_level": "None",
+          "mipmapping": "Full",
+          "readbacks": "Synchronous when effects sample the frame/depth buffer"
+        },
+        "fallback_profile": {
+          "backend": "Software or most accurate renderer path if exposed",
+          "disable_widescreen_patches": true,
+          "skipdraw": 0
+        }
+      },
+      "implementation_patch_plan": [
+        "Treat black gameplay with active audio as a GS render-target/depth/fog failure, not as a boot failure.",
+        "Add a Silent Hill 2 compatibility flag that disables unsafe CRC hacks and requires accurate depth/fog state for gameplay scenes.",
+        "Force a full target resolve before post-processing passes that sample the previous color or depth buffer."
+      ],
+      "user_steps": [
+        "Start from an in-game save instead of a save state made during the cutscene.",
+        "Use Native 1x and disable widescreen/CRC/skipdraw hacks while testing the first playable scene.",
+        "If the scene is still black, switch to the software/accurate renderer path for the first playable scene, save, then retest Metal."
+      ]
+    },
+    {
+      "id": "scarface-scrambled-screen-target-resolve",
+      "title": "Scarface scrambled screen after boot",
+      "issue_refs": [49],
+      "games": ["Scarface: The World Is Yours"],
+      "symptoms": [
+        "Game boots and loads",
+        "Rendered screen is scrambled or unreadable",
+        "Changing scripts alone does not make the display correct"
+      ],
+      "classification": "render-target-resolve-and-texture-cache",
+      "priority": "medium",
+      "renderer_actions": {
+        "safe_profile": {
+          "backend": "Metal",
+          "internal_resolution": "Native 1x",
+          "texture_cache_precision": "High",
+          "accurate_blending": "Basic or High",
+          "bilinear_filtering": "PS2",
+          "crc_hack_level": "None",
+          "disable_custom_shaders": true
+        },
+        "fallback_profile": {
+          "backend": "Software or most accurate renderer path if exposed",
+          "skipdraw": 0,
+          "half_pixel_offset": "Off/Native"
+        }
+      },
+      "implementation_patch_plan": [
+        "Flush or re-key texture-cache entries when the game aliases render targets as textures.",
+        "Resolve render targets before presentation when the source page has been written through an overlapping GS memory region.",
+        "Disable aggressive upscaling and half-pixel heuristics for this title until the scrambled presentation is fixed."
+      ],
+      "user_steps": [
+        "Test at Native 1x with CRC hacks and custom shaders disabled.",
+        "Use high texture-cache precision and PS2 bilinear filtering.",
+        "If the image remains scrambled, use the software/accurate fallback renderer for this title."
+      ]
+    },
+    {
+      "id": "vu-geometry-spinning-models",
+      "title": "Spinning models and broken geometry in Dark Cloud 2 / Odin Sphere",
+      "issue_refs": [41],
+      "games": ["Dark Cloud 2", "Odin Sphere"],
+      "symptoms": [
+        "3D models spin unexpectedly",
+        "Geometry appears broken or distorted",
+        "The issue is visual but likely caused by VU transform accuracy"
+      ],
+      "classification": "vu-transform-accuracy",
+      "priority": "high",
+      "renderer_actions": {
+        "safe_profile": {
+          "backend": "Metal",
+          "internal_resolution": "Native 1x while diagnosing",
+          "texture_cache_precision": "High",
+          "accurate_blending": "Basic",
+          "mipmapping": "Automatic"
+        },
+        "cpu_vu_requirements": {
+          "vu0": "Interpreter",
+          "vu1": "Interpreter",
+          "mtvu": false,
+          "instant_vu1": false,
+          "clamping_mode": "Extra+Preserve Sign if Normal still glitches",
+          "round_mode": "Nearest"
+        }
+      },
+      "implementation_patch_plan": [
+        "Route affected titles through a per-game VU-accuracy profile before trying renderer-only fixes.",
+        "Disable unsafe VU speedhacks for known transform bugs so Metal receives correct vertex data.",
+        "Expose the VU accuracy dependency in graphics diagnostics because the symptom appears as broken rendering."
+      ],
+      "user_steps": [
+        "Disable MTVU and Instant VU1.",
+        "Switch VU0 and VU1 to Interpreter, then retest the same model/scene.",
+        "Keep Native 1x until geometry is stable, then raise resolution gradually."
+      ]
+    },
+    {
+      "id": "crash-twinsanity-animation-and-ipad-scaling",
+      "title": "Crash Twinsanity animation glitches and iPad aspect scaling",
+      "issue_refs": [39],
+      "games": ["Crash Twinsanity"],
+      "symptoms": [
+        "Character animations behave unnaturally or glitch",
+        "Stretch to Window does not apply on iPad",
+        "The game is otherwise smooth and playable"
+      ],
+      "classification": "vu-animation-plus-viewport-scaling",
+      "priority": "medium",
+      "renderer_actions": {
+        "safe_profile": {
+          "backend": "Metal",
+          "internal_resolution": "Native 1x while testing animation",
+          "aspect_ratio": "Recompute viewport immediately after setting change",
+          "integer_scaling": false,
+          "safe_area": "Respect iPad safe-area insets"
+        },
+        "cpu_vu_requirements": {
+          "vu0": "Interpreter if animation glitches persist",
+          "vu1": "Interpreter if animation glitches persist",
+          "mtvu": false,
+          "instant_vu1": false
+        }
+      },
+      "implementation_patch_plan": [
+        "Invalidate the Metal viewport/scissor cache whenever aspect ratio changes on iPad.",
+        "Rebuild touch and drawable bounds in the same transaction so visual scaling and input remain aligned.",
+        "Apply a VU accuracy fallback when animation glitches reproduce independently of the iPad scaling bug."
+      ],
+      "user_steps": [
+        "Set aspect ratio before launching the game, force-close, then relaunch in the desired iPad orientation.",
+        "If animation still glitches, disable MTVU/Instant VU1 and test VU interpreters.",
+        "Only increase internal resolution after viewport scaling and animation are both stable."
+      ]
+    }
+  ]
+}
