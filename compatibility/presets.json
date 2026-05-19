@@ -1,0 +1,252 @@
+{
+  "version": 1,
+  "source": "https://github.com/otti83/iPSX2/issues",
+  "updated": "2026-05-19",
+  "profiles": [
+    {
+      "id": "ui-aspect-pad-landscape",
+      "title": "Aspect ratio changes do not apply and virtual pad fails in landscape",
+      "issue_refs": [
+        39,
+        40
+      ],
+      "affected_games": [
+        "Crash Twinsanity",
+        "All games in landscape mode"
+      ],
+      "symptoms": [
+        "Aspect ratio option such as Stretch to Window appears to be ignored",
+        "Virtual pad stops responding after switching to landscape",
+        "iPad or iPhone landscape layout keeps the old render bounds"
+      ],
+      "status": "workaround",
+      "settings": {
+        "display": {
+          "aspect_ratio": "Fit to Window or 4:3 before launching a game; change again only after returning to the pause/settings overlay",
+          "orientation_lock": "Landscape before boot",
+          "safe_area_mode": "Respect notch/home-indicator safe areas",
+          "integer_scaling": false
+        },
+        "input": {
+          "virtual_pad_layout": "Reset to default after orientation change",
+          "touch_hitbox_rebuild": "Required whenever orientation or safe area changes"
+        }
+      },
+      "implementation_notes": [
+        "When application code becomes available, recalculate the Metal drawable viewport and touch hitboxes inside the same orientation-change transaction.",
+        "Persist aspect-ratio selection separately from the render surface size so UI changes invalidate cached viewport state."
+      ],
+      "user_steps": [
+        "Force-close the app after changing aspect ratio once.",
+        "Lock the device in landscape, reopen the app, then launch the game.",
+        "If the virtual pad still misses touches, reset the controller layout and avoid changing orientation while a game is running."
+      ]
+    },
+    {
+      "id": "ee-core-jit-stability",
+      "title": "EE Core JIT instability while Interpreter is stable but slow",
+      "issue_refs": [
+        38,
+        36
+      ],
+      "affected_games": [
+        "Multiple titles"
+      ],
+      "symptoms": [
+        "Game works correctly with EE Interpreter but has low FPS",
+        "JIT mode introduces freezes, timing bugs, or broken game logic"
+      ],
+      "status": "workaround",
+      "settings": {
+        "cpu": {
+          "ee_core": "Interpreter for affected scenes; JIT for normal gameplay after saving",
+          "vu0": "Interpreter when geometry or animation is unstable",
+          "vu1": "Interpreter for animation/geometry bugs; re-enable recompiler only after testing"
+        },
+        "speedhacks": {
+          "preset": "Safe",
+          "mtvu": false,
+          "instant_vu1": false
+        }
+      },
+      "implementation_notes": [
+        "Gate JIT behind a per-title compatibility flag until block invalidation and self-modifying-code paths are audited.",
+        "Add a quick-toggle action for EE Interpreter/JIT so users can pass unstable scenes without restarting."
+      ],
+      "user_steps": [
+        "Save before the failing area.",
+        "Switch EE Core to Interpreter and set speedhacks to Safe.",
+        "Pass the unstable scene, save again, then test JIT only after the scene has completed."
+      ]
+    },
+    {
+      "id": "nfs-audio-and-carbon-loading",
+      "title": "Need for Speed series missing audio and Carbon loading freezes",
+      "issue_refs": [
+        43,
+        44
+      ],
+      "affected_games": [
+        "Need for Speed Underground",
+        "Need for Speed Underground 2",
+        "Need for Speed Most Wanted",
+        "Need for Speed Carbon"
+      ],
+      "symptoms": [
+        "Gameplay runs but music/effects are silent",
+        "Need for Speed Carbon freezes on loading screens"
+      ],
+      "status": "workaround",
+      "settings": {
+        "audio": {
+          "spu2_async_mix": false,
+          "synchronization_mode": "TimeStretch or Sync",
+          "interpolation": "Nearest or Linear for troubleshooting",
+          "output_latency_ms": 100
+        },
+        "cdvd": {
+          "fast_cdvd": false,
+          "read_speed": "Native",
+          "texture_streaming_safety": "Prefer accuracy over speed"
+        },
+        "cpu": {
+          "ee_core": "Interpreter for loading transitions if JIT freezes",
+          "iop_timing": "Accurate"
+        }
+      },
+      "implementation_notes": [
+        "Prioritize SPU2 DMA/ADMA timing and IOP/CDVD synchronization for EA titles.",
+        "Avoid Fast CDVD defaults for stream-heavy racing games because loading screens can wait forever for media/audio events."
+      ],
+      "user_steps": [
+        "Disable Fast CDVD and restart the game from a clean boot.",
+        "Set audio synchronization to TimeStretch or Sync and increase output latency to 100 ms.",
+        "For Carbon loading freezes, temporarily switch EE Core to Interpreter before loading the next race/menu."
+      ]
+    },
+    {
+      "id": "midnight-club-3-garage-streaming",
+      "title": "Midnight Club 3 Remix infinite loading entering garage",
+      "issue_refs": [
+        46
+      ],
+      "affected_games": [
+        "Midnight Club 3: DUB Edition Remix"
+      ],
+      "symptoms": [
+        "Animated LOADING screen continues forever",
+        "Career mode cannot progress into garage",
+        "Issue reproduces with Metal renderer, native resolution, default speedhacks, and Fast CDVD disabled"
+      ],
+      "status": "workaround",
+      "settings": {
+        "cdvd": {
+          "fast_cdvd": false,
+          "read_speed": "Native",
+          "block_dump_cache": "Clear before retesting"
+        },
+        "speedhacks": {
+          "preset": "Safe",
+          "cycle_rate": 0,
+          "cycle_steal": 0,
+          "mtvu": false
+        },
+        "cpu": {
+          "ee_core": "Interpreter during garage load",
+          "vu1": "Interpreter during garage load"
+        },
+        "save_strategy": "Use an in-game save immediately before entering the garage; avoid save states made on the loading screen"
+      },
+      "implementation_notes": [
+        "This looks like a streaming/timing deadlock rather than a renderer freeze; investigate CDVD, IOP, and VU timing before graphics-only changes.",
+        "Add per-game automatic safe-mode switching around known streaming transitions when runtime hooks are available."
+      ],
+      "user_steps": [
+        "Boot clean, load an in-game save, and set speedhacks to Safe with MTVU off.",
+        "Switch EE Core and VU1 to Interpreter before entering the garage.",
+        "After the garage loads and an in-game save is written, re-enable faster settings one at a time."
+      ]
+    },
+    {
+      "id": "god-of-war-hit-flicker",
+      "title": "God of War screen flickers when hits occur",
+      "issue_refs": [
+        42
+      ],
+      "affected_games": [
+        "God of War"
+      ],
+      "symptoms": [
+        "Screen flickers for a few seconds when Kratos or enemies are hit",
+        "Gameplay otherwise appears smooth"
+      ],
+      "status": "workaround",
+      "settings": {
+        "renderer": {
+          "backend": "Metal",
+          "blending_accuracy": "High",
+          "texture_barrier": true,
+          "hardware_fixes": "Enable accurate destination alpha / framebuffer fetch when available",
+          "accurate_blending": "High",
+          "accurate_destination_alpha": true,
+          "texture_barrier_or_framebuffer_fetch": true,
+          "crc_hack_level": "None",
+          "readbacks": "Synchronous for hit-flash framebuffer feedback"
+        },
+        "resolution": {
+          "internal_scale": "Native 1x for troubleshooting before increasing"
+        }
+      },
+      "implementation_notes": [
+        "Hit flashes exercise framebuffer feedback, destination alpha, and alpha blending; force accurate Metal render-target resolve/barrier behavior for this title.",
+        "Do not sample from a render target that is still bound for writing; resolve or use framebuffer fetch before the post-process pass.",
+        "If Metal cannot provide an accurate path yet, auto-select the slower software/accurate fallback profile for hit-flash scenes."
+      ],
+      "user_steps": [
+        "Set internal resolution to Native 1x.",
+        "Enable high/accurate blending, accurate destination alpha, and texture barrier/framebuffer effects if the UI exposes those options.",
+        "If flicker remains during hits, switch God of War to the software/most accurate renderer path until the Metal feedback path is patched."
+      ]
+    },
+    {
+      "id": "geometry-animation-vu-accuracy",
+      "title": "Spinning models, broken geometry, and animation glitches",
+      "issue_refs": [
+        39,
+        41
+      ],
+      "affected_games": [
+        "Dark Cloud 2",
+        "Odin Sphere",
+        "Crash Twinsanity"
+      ],
+      "symptoms": [
+        "Models spin unexpectedly",
+        "Geometry is broken or distorted",
+        "Character animations occasionally look unnatural"
+      ],
+      "status": "workaround",
+      "settings": {
+        "cpu": {
+          "vu0": "Interpreter",
+          "vu1": "Interpreter",
+          "round_mode": "Nearest",
+          "clamping_mode": "Normal or Extra+Preserve Sign"
+        },
+        "speedhacks": {
+          "instant_vu1": false,
+          "mtvu": false
+        }
+      },
+      "implementation_notes": [
+        "Treat these as VU accuracy candidates; add per-title VU interpreter fallback and disable unsafe VU speedhacks by default for affected games.",
+        "Document the exact game serial/region with future reports to avoid over-broad workarounds."
+      ],
+      "user_steps": [
+        "Disable MTVU and Instant VU1.",
+        "Switch VU0/VU1 to Interpreter and test the affected scene.",
+        "If fixed, re-enable one option at a time to find the minimum slowdown needed."
+      ]
+    }
+  ]
+}
